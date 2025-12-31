@@ -30,12 +30,7 @@ else:
   proc isBrowser(): bool = not isNode()
 
 # Cue installed
-static:
-  if gorgeEx("command -v cue")[1] != 0:
-    raise newException(
-      IOError,
-      "CUE is not installed or not found in PATH. Configuration is required. Please install",
-    )
+const NO_CUE*: bool = gorgeEx("command -v cue")[1] != 0
 
 proc `/`(a: Path, b: string): Path =
   result = a
@@ -77,7 +72,7 @@ proc fileToJsonStatic(path: string): (string,int) =
   ## Load cue file contents at compile time, fallback to json file of same name
   ## if cue not found.
   var output:string
-  if not staticFileExists path:
+  if NO_CUE or not staticFileExists path:
     let jpath = $Path(path).changeFileExt(".json")
     if staticFileExists jpath: (staticRead jpath, 0)
     else: ("", 1)
@@ -169,7 +164,7 @@ proc loadEnvVars(): void =
     
 proc fileToJson(path: string): (string,int) =
   ## Load cue file contents at runtime, fallback to json file of same name
-  if not fileExists(path):
+  if NO_CUE or not fileExists(path):
     let jpath = $Path(path).changeFileExt(".json")
     if fileExists jpath: (readFile jpath, 0)
     else: ("", 1)
