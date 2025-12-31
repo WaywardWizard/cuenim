@@ -73,12 +73,12 @@ template loadConfigLogic(executor: proc(s: string): (string, int)): string =
 func cueExportCmd(path: string): string =
   &"cue export {path}"
   
-proc fileToJsonStatic(path: Path): (string,int) =
+proc fileToJsonStatic(path: string): (string,int) =
   ## Load cue file contents at compile time, fallback to json file of same name
   ## if cue not found.
   var output:string
   if not staticFileExists path:
-    jpath = $(path.changeFileExt(".json"))
+    let jpath = $Path(path).changeFileExt(".json")
     if staticFileExists jpath: (staticRead jpath, 0)
     else: ("", 1)
   else:
@@ -91,7 +91,7 @@ proc loadConfigStatic(
   ## return: [...(name, json)]
   #echo "Loading compiletime configurations ", cfgs
   for cfg in cfgs:
-    if not staticFileExists cfg:
+    if not staticFileExists $cfg:
       raise newException(
         IOError,
         &"Compile time config file {cfg} not found",
@@ -167,14 +167,14 @@ proc loadEnvVars(): void =
   config.add("env",rawEnv.join("\n"), json)
   #echo config
     
-proc fileToJson(path: Path): (string,int) =
+proc fileToJson(path: string): (string,int) =
   ## Load cue file contents at runtime, fallback to json file of same name
   if not fileExists(path):
-    let jpath = path.changeFileExt(".json")
+    let jpath = $Path(path).changeFileExt(".json")
     if fileExists jpath: (readFile jpath, 0)
     else: ("", 1)
   else:
-    execCmdEx(cueExportCmd path)
+    execCmdEx(cueExportCmd $path)
     
 proc loadConfig(cfgs: openArray[string], reload=false): void {.inline.} =
   ## Load (runtime) configuration files and env to Config singleton
@@ -184,7 +184,7 @@ proc loadConfig(cfgs: openArray[string], reload=false): void {.inline.} =
   when defined(js):
     if not isNode():
       raise newException(AccessViolationDefect, "No runtime config available in browser")
-  let foundCfgs = cfgs.filterIt(fileExists $it)
+  let foundCfgs = cfgs.filterIt(fileExists($it) or fileExists($it.changeFileExt(".json")))
   var msg =  if reload: "Reloading " else: "Loading "
   msg = msg & "runtime configurations: "
   #echo msg, foundCfgs 

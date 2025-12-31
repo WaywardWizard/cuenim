@@ -46,10 +46,9 @@ proc parse*(x:string): JsonNode =
   if sLower in ["true", "false"]: return newJBool(sLower == "true")
   # take out sign only strings so not interpreted as int
   if sLower in ["+","-"]:  return newJString(s)
-    
   if sLower[0] == '[' and sLower[^1] == ']': # Array
     result = newJArray()
-    for element in s.split(','): result.add(parse(element))
+    for element in s[1..^2].split(','): result.add(parse(element))
     return result
     
   if sLower in toSeq(cartesianProduct(["+","-",""],["nan","inf"])): # Float special
