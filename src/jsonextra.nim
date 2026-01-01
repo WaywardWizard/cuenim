@@ -62,6 +62,9 @@ proc parse*(x:string): JsonNode =
       else: discard # try as object or string
         
   if sLower[0] == '{' and sLower[^1] == '}': # Object (we trimmed whitespace)
-    return parseJson(s,rawIntegers=true, rawFloats=true)
+    when defined(js): # JS backends std/json does not support raw numbers
+      return parseJson(s)
+    else:
+      return parseJson(s,rawIntegers=true, rawFloats=true)
     
   return newJString(s)
