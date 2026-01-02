@@ -41,8 +41,13 @@ proc `/`(a: Path, b: string): Path =
 const PRJDIR = Path(getProjectPath()) # project root directory
 const PRJCFG = PRJDIR / "config.cue" # compile
 
-when nimvm: discard
-else: # Runtime config
+# static:
+#   echo os.getCurrentDir()
+when nimvm:  # Compiletime.
+  # Assignment here only for nimvm compile time access.
+  const CTCFG = Path(staticExec("pwd") & "/config.cue") # std/paths unavilable
+  
+else: # Runtime.
   when not defined(js): # js backend has no filesystem access
     let RUNDIR = paths.getCurrentDir() # directory from which the user has run the bin
     let BINDIR: Path = Path(getAppDir()) # path to binary file being executed
@@ -53,15 +58,13 @@ else: # Runtime config
 template loadConfigLogic(executor: proc(s: string): (string, int)): string =
   ## Report failure to load config file, evaluate to contents of file as string, empty if failure and print warning
   # let msg = &"Loading config from {cfg}"
-  #
   # when nimvm: echo msg
   # else: info msg
-  #
   var (output, code) = executor(cfg) # result is a json string
   if code != 0:
     raise newException(
       IOError,
-      "Failed to load config file $#, cue export exited with code $#" % [cfg,$code]
+      "Failed to load config file $#, cue export exited with code $#\n$#" % [cfg,$code,output]
     )
   output
 
@@ -80,7 +83,7 @@ proc fileToJsonStatic(path: string): (string,int) =
     gorgeEx(cueExportCmd path)
 
 proc loadConfigStatic(
-    cfgs: openArray[string or Path]
+    cfgs: openArray[string]
 ): seq[(string, string)] {.compileTime.} =
   ## Load configuration files (cfgs) at compile time to compileTimeConfig const
   ## return: [...(name, json)]
@@ -113,12 +116,10 @@ iterator pairs(x:Config,reverse=false): (string,(string,JsonNode)) =
 
 # This must be const to persist compiletime values to the binary (or script for js)
 #                          name,   json string
-const compileTimeConfig: seq[(string, string)] =
-  if staticFileExists($PRJCFG): # allow no compile time config
-    loadConfigStatic([$PRJCFG])
-  else:
-    #echo "No compile time configuration"
-    @[]
+const compileTimeConfig: seq[(string, string)] = block:
+  
+  let cfgs = [$PRJCFG,$CTCFG].filterIt(staticFileExists(it) or staticFileExists($Path(it).changeFileExt(".json")))
+  loadConfigStatic(cfgs)
 
 proc initConfig(): Config =
   ## Intialize configuration with compile time configs, runtime configs added later, order matters for precedence
@@ -209,8 +210,9 @@ proc getConfigNodeImpl(key: openarray[string]): JsonNode {.raises: [ValueError].
   for mname, (jstr, jnode) in ctOrRtConfig.pairs(true): # `pairs(Config)`_
     if jnode.contains(key): # differentiates jsnode{key}=null vs no key
       return jnode{key}
-  raise newException(ValueError, &"Key '{key}' not found in configuration")
-  
+  let loadedCfg = ctOrRtConfig.configurations.keys.toSeq().join("\n")
+  raise newException(ValueError, &"Key '{key}' not found in configuration\n{loadedCfg}")
+
 template getConfigNode*(key: string):JsonNode= getConfigNodeImpl(key.split('.'))
 template getConfigNode*(key: varargs[string]): JsonNode = getConfigNodeImpl(key)
 
@@ -237,7 +239,7 @@ proc getConfig*[T](key: string): T =
 
 template getConfig*[T](key:varargs[string]): T = getConfig[T](key.join("."))
 
-proc showConfig*():string = $config
+proc showConfig*():string = $cfg()
 
 # For c backend. Nimvm does not support these as getCurrentDir and getAppDir are not available at compile time
 when not defined(js):

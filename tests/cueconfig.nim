@@ -19,7 +19,7 @@ suite "Read static configuration (at compiletime)":
     # will raise exception if fails
     # const evaluated at conpiletime, so we are testing compile time access
     const cfgNode = getConfig[string]("compiled.testString")
-
+  
 suite "Read static configuration (at runtime)":
   test "Read compiled":
     check getConfigNode("compiled").kind == JObject

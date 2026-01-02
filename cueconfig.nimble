@@ -2,7 +2,7 @@
 ## Licensed under the MIT license
 
 # Package
-version       = "1.2.1"
+version       = "1.3.0"
 author        = "Ben Tomlin"
 description   = "Cue configuration with JSON fallback for Nim projects"
 license       = "MIT"
