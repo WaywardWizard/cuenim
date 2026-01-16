@@ -192,7 +192,20 @@ proc deregisterEnvPrefix*(envprefix: string): void =
 var configRegistry: seq[FileSelector]
 var ctConfigRegistry {.compiletime.}: seq[FileSelector] = @[]
 
-proc registerConfigFileSelector*(selectors: varargs[FileSelector]): void =
+proc registerConfigFileSelectorImpl(selectors: varargs[FileSelector]): void =
+  var reg: seq[FileSelector] = @[]
+  when nimvm: reg = ctConfigRegistry
+  else: reg = configRegistry
+  
+  var known: HashSet[int] = initHashSet[int]()
+  for i in reg:
+    known.incl(hash(i))
+  for selector in selectors:
+    if known.contains(hash(selector)):
+      continue
+    ctConfigRegistry.add(selector)
+
+proc registerConfigFileSelector*(selector: FileSelector): void =
   ## Register config file path or pattern to be located and loaded at runtime or
   ## compiletime.
   ##
@@ -256,14 +269,8 @@ proc registerConfigFileSelector*(selectors: varargs[FileSelector]): void =
     )
     # And remove it from the current configuration
     loadRegisteredConfig()
-
-  when nimvm:
-    for selector in selectors:
-      ctConfigRegistry.add(selector)
-  else:
-    for selector in selectors:
-      configRegistry.add(selector)
-
+  registerConfigFileSelectorImpl(selector)
+  
 proc registerConfigFileSelector*(pselector: varargs[Path]): void =
   ## Convenience fskPath registration automatically fallback to json
   for p in pselector:
@@ -281,11 +288,11 @@ proc registerConfigFileSelector*(
     registerConfigFileSelector(initFileSelector(Path(sp), rx, useJsonFallback))
 
 proc registerConfigFileSelector*(
-    rxselectors: varargs[tuple[searchpath, regex: string]]
+    rxselectors: varargs[tuple[searchpath, peg: string]]
 ): void =
-  ## Convenience fskRegex registration automatically fallback to json
-  for (searchpath, regex) in rxselectors:
-    registerConfigFileSelector(initFileSelector(Path(searchpath), regex, true))
+  ## Convenience fskPeg registration automatically fallback to json
+  for (searchpath, peg) in rxselectors:
+    registerConfigFileSelector(initFileSelector(Path(searchpath), peg, true))
 
 proc deregisterConfigFileSelector*(selector: FileSelector): void =
   ## Deregister a previously registered config file selector so it is not loaded
@@ -333,6 +340,12 @@ proc buildCompiletimeConfig(): CtSerializedConfig {.compiletime.} =
     tempEnv.add(initJsonSource(pfx, insensitive).serialize)
   (env: tempEnv, file: tempFiles)
 
+var configInstance: Config
+var configInitialized = false
+when nimvm:
+  var ctConfigInstance {.compiletime.}: Config
+  var ctConfigInitialized {.compiletime.} = false
+
 proc setCompiletimeConfig(data: CtSerializedConfig): void =
   ## Set the compile time configuration from serialized json sources.
   ##
@@ -343,7 +356,7 @@ proc setCompiletimeConfig(data: CtSerializedConfig): void =
 
 template commitCompiletimeConfig*(): untyped =
   ## Commit registered compile time config files and environment variables to
-  ## the binary.
+  ## the binary. Call in a non static context.
   ##
   ## Subsequent registrations will not be included in the compiled binary but
   ## their config will be available at compiletime.
@@ -354,17 +367,28 @@ template commitCompiletimeConfig*(): untyped =
   ##    - FileSelectors -> JsonSource -> SerializedJsonSource conversions
   ##    - Serialized result is stored in a const scoped to the client module.
   ##    - A call is embedded in the client to send to cueconfig module at runtime.
+  ## 
+  ## Constraints, Requirements, Rationale, Details
+  ## * The single mechanism for persisting data across the compiletime/runtime
+  ##   boundary is const. We must use a const.
+  ## * Const are evaluated by the compiler when they are encountered
+  ## * We need to delay evaluation of the const until after registrations
+  ## * The client module calls this after registrations.
+  ## * The const will exist in the client module scope, and this is necessary
+  ##   for the const to be evaluated after registrations.
+  ## * The cueconfig module requires access to the consts data.
+  ## * AST to transfer the const data to cueconfig module scope is also inserted.
+  ## * This transfer must be made at runtime.
+  when nimvm:
+    raise newException(
+      ValueError,
+      "commitCompiletimeConfig may only be used in non-nimvm (runtime) context",
+    )
   const data: CtSerializedConfig = buildCompiletimeConfig()
-  setCompiletimeConfig(data)
+  setCompiletimeConfig(data) # runtime only
+  configInitialized = false # force reinit to include committed config
 
 proc loadRegisteredConfig*()
-
-var configInstance: Config
-var configInitialized = false
-
-when nimvm:
-  var ctConfigInstance {.compiletime.}: Config
-  var ctConfigInitialized {.compiletime.} = false
 
 proc initConfig(): Config =
   ## Initialize configuration from last committed compiletime config.
@@ -395,6 +419,12 @@ proc initConfig(): Config =
         result.ctEnv[$jsrc] = jsrc
 
 proc cfgRuntime(): var Config =
+  ## Return config singleton. This can occur before compiletime config is
+  ## retuned back to this module by `commitCompiletimeConfig`_ so may need to
+  ## reinitialize in that case so that post commit the comitted config is included.
+  ## 
+  ## In such a reinitialization case the registered config will also need reloading
+  ## so that they again are included.
   if not configInitialized:
     configInstance = initConfig()
     configInitialized = true
@@ -403,7 +433,6 @@ proc cfgRuntime(): var Config =
 
 when nimvm:
   proc cfgCompiletime(): var Config =
-    static: echo "HERE"
     if not ctConfigInitialized:
       ctConfigInstance = initConfig()
       ctConfigInitialized = true
@@ -431,7 +460,7 @@ proc loadRegisteredConfigFiles(): void =
   ## # Fallback
   ## Where cue files or binary are not available a json file matching the
   ## same selector (modified to match the json extension) will be used if
-  ## possible. This fallback applies to fskPath and fskRegex.
+  ## possible. This fallback applies to fskPath and fskPeg.
   ##
   ## # Conflicts
   ## Where both .cue and .json files are matched by selectors the .cue file
@@ -625,3 +654,31 @@ proc clearConfig*(): void =
   else:
     configRegistry = @[]
     envRegistry = @[]
+
+proc showRegistrations*(): string =
+  ## Print registered config file selectors and env var prefixes
+  var registry: seq[FileSelector]
+  var msg: string
+  var tmp: seq[string] = @[]
+  when nimvm: 
+    registry = ctConfigRegistry
+    msg = "Compiletime"
+  else:
+    registry = configRegistry
+    msg = "Runtime"
+  tmp.add msg & " Registered Config File Selectors:"
+  for s in registry: tmp.add $s
+  tmp.add msg & " Registered Env Var Prefixes:"
+  for (pfx, insensitive) in ctEnvRegistry:
+    tmp.add pfx & " (case insensitive: " & $insensitive & ")"
+  return tmp.join("\n")
+proc showComittedRegistrations*(): string =
+  when nimvm:
+    raise newException(
+      ValueError,
+      "showComittedRegistrations may only be used in non-nimvm (runtime) context",
+    )
+  var tmp: seq[string] = @[]
+  for item in ctSerializedConfig:
+    tmp.add $item
+  return tmp.join("\n")

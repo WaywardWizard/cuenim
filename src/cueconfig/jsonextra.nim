@@ -19,16 +19,15 @@ import util
 type
   FileSelectorKind* = enum
     fskPath
-    fskRegex
+    fskPeg
 
   FileSelector* = object
     case discriminator: FileSelectorKind
     of fskPath:
       path: Path
-    of fskRegex:
+    of fskPeg:
       searchspace: Path ## regex to apply over all files in this path and below
-      patternStr: string ## original pattern string
-      pattern: Regex
+      peg: Peg
         ## matcher of *relative* paths in searchspace \
         ## The path string will be `searchspace / subpath`
     useJsonFallback*: bool = true
@@ -53,17 +52,18 @@ type
   SerializedJsonSource* =
     tuple[kind, path, prefix, jsonStr: string, caseInsensitive: bool]
 
+proc `$`*(s:SerializedJsonSource): string =
+  ## String representation of a SerializedJsonSource
+  &"SerializedJsonSource(kind={s.kind},path={s.path},prefix={s.prefix},caseInsensitive={s.caseInsensitive})"
 proc initFileSelector*(
-    searchspace: Path, pattern: string, useJsonFallback = true
+    searchspace: Path, peg: string, useJsonFallback = true
 ): FileSelector =
-  ## Initialize a FileSelector from a searchspace path and regex pattern
-  if pattern.len == 0:
-    raise ValueError.newException("Pattern cannot be empty")
+  ## Initialize a FileSelector from a searchspace path and peg 
+  if ($peg).len == 0: raise ValueError.newException("Peg cannot be empty")
   FileSelector(
-    discriminator: fskRegex,
+    discriminator: fskPeg,
     searchspace: searchspace,
-    patternStr: pattern,
-    pattern: re(pattern),
+    peg: peg(peg),
     useJsonFallback: useJsonFallback,
   )
 
@@ -74,21 +74,21 @@ proc initFileSelector*(path: Path, useJsonFallback = true): FileSelector =
 proc hash*(x: FileSelector): Hash =
   ## Hash a FileSelector for caching, equivalence checking
   ## May fail if `initFileSelector`_ was not called for construction
-  doAssert x.patternStr != "" or x.discriminator == fskPath,
+  doAssert x.discriminator == fskPath or $x.peg != "",
     "Improperly constructed FileSelector"
   var h: Hash
   case x.discriminator
   of fskPath:
     h = h !& hash($x.path)
-  of fskRegex:
+  of fskPeg:
     h = h !& hash($x.searchspace)
-    h = h !& hash(x.patternStr)
+    h = h !& hash($x.peg)
   !$h
 
 proc interpolate(s: FileSelector): FileSelector =
   ## Return a FileSelector with environment variable and cwd interpolation
   ##
-  ## Replaces `{VAR}` in the pattern with the value of the environment.
+  ## Replaces `{VAR}` in the path or searchspace with the value of the environment.
   ## Replace `{getCurrentDir()}` with the current working directory.
   result = s # copy
   var pathStr: string
@@ -98,24 +98,24 @@ proc interpolate(s: FileSelector): FileSelector =
   case s.discriminator
   of fskPath:
     pathStr = $s.path
-  of fskRegex:
+  of fskPeg:
     pathStr = $s.searchspace
   pathStr = pathStr.replace("{getCurrentDir()}", cwd)
 
   # env
-  let matcher = re(r"{([A-Za-z0-9_]+)\}")
-  # var matches: array[2, string]
-  # while contains(pathStr, matcher, matches):
-  #   let envval = envvars.getEnv(matches[0])
-  #   if envval == "":
-  #     raise ValueError.newException(&"Interplation env var {matches[0]} is empty")
-  #   pathStr = pathStr.replace("{" & matches[0] & "}", envval)
+  let matcher = peg"\{@@\}"
+  var matches: array[1, string]
+  while contains(pathStr, matcher, matches):
+    let envval = envvars.getEnv(matches[0])
+    if envval == "":
+      raise ValueError.newException(&"Interplation env var {matches[0]} is empty")
+    pathStr = pathStr.replace("{" & matches[0] & "}", envval)
 
   # update path
   case s.discriminator
   of fskPath:
     result.path = pathStr.Path
-  of fskRegex:
+  of fskPeg:
     result.searchspace = pathStr.Path
 
 proc load(x: JsonSource): tuple[jsonStr: string, json: JsonNode]
@@ -178,6 +178,7 @@ proc initJsonSource*(path: Path, useJsonFallback = false): JsonSource =
     if discriminant == jsCue and useJsonFallback: # no cue binary
       return initJsonSource(path.changeFileExt("json"))
     else:
+      echo $getCurrentException().msg
       raise # no sops binary, caller to handle
 
 proc initJsonSource*(envprefix: string, caseInsensitive = true): JsonSource =
@@ -230,7 +231,7 @@ iterator items*(s: FileSelector, reverse = false): Path =
   ## - A maximum of one path for fskPath
   ## - Relative paths are returned as-is, and are relative to the pwd
   ##
-  ## # fskRegex
+  ## # fskPeg
   ## - not supported at compiletime
   ## - zero or more paths returned
   ## - Paths are relative to their searchspace
@@ -249,7 +250,7 @@ iterator items*(s: FileSelector, reverse = false): Path =
     var extant: bool = extant(s.path)
     if extant:
       yield s.path
-  of fskRegex:
+  of fskPeg:
     var items: seq[SortKey] = @[]
     # todo may need a nimvm implementation
     var searchspace =
@@ -260,10 +261,10 @@ iterator items*(s: FileSelector, reverse = false): Path =
     var item: Path
     for itemx in walkDirRec($searchspace, relative = true):
       item = searchspace / itemx
-      # if contains($item, s.pattern): # get last modification time
-      #   items.add(
-      #     ($item, split($(item.parentDir), '/').len, getLastModificationTime($item))
-      #   )
+      if contains($item, s.peg):
+        items.add(
+          ($item, split($(item.parentDir), '/').len, getLastModificationTime($item))
+        )
 
     if reverse:
       items.sort(cmp)
