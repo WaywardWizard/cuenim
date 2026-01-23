@@ -50,14 +50,14 @@
 ##
 import
   std/
-    [times, json, paths, tables, strformat, macros, strutils, sequtils, sets, algorithm]
+    [times, json, paths, tables, strformat, macros, strutils, sequtils, sets, algorithm, hashes]
 #import std/[time,json, staticos, paths, tables, strformat, macros, strutils]
 import cueconfig/[jsonextra, util]
-when nimvm:
-  import system/nimscript
+# when nimvm:
+#   import system/nimscript
   
 when not defined(js):
-  import std/[os, hashes] # these wont compile with js backend or are unneeded
+  import std/[os] # these wont compile with js backend or are unneeded
 #
 type
   Config = ref object
