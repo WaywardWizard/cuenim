@@ -5,7 +5,7 @@ import std/[unittest, json, paths, strutils, envVars, macros]
 when not defined(js):
   import std/[files, osproc, dirs, os, times]
 
-import cueconfig/[cueconfig, util]
+import cueconfig/[config, util]
 
 # when nimvm:
 #   from system/nimscript import cd

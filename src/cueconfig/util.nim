@@ -5,8 +5,6 @@ import std/[paths, macros, strformat]
 
 when not defined(js):
   import std/[os]
-when nimvm:
-  import std/[staticos]
   
 import vmutil
 export vmutil

@@ -10,7 +10,7 @@ srcDir        = "src"
 
 # Dependencies
 
-requires "nim >= 2.2.6"
+requires "nim >= 2.2.4"
 
 proc recListFiles*(dir: string, ext: string="nim"): seq[string] =
   result = @[]
@@ -83,7 +83,33 @@ task docgen, "Generate documentation":
   # need to have theindex.html for genearted links, and index.html for landing
   result = gorgeEx &"cp {DOCFOLDER}/theindex.html {DOCFOLDER}/index.html"
   checkResult()
+
+task compatibility, "Check compatibility with older Nim versions":
+  let getVersions:string = r"choosenim --noColor versions|awk '/.*\*?.*([0-9]+\.){2}[0-9]+/'|grep -Po '(\d|\.)+'|sort -V"
+  let thisVersion = (gorgeEx r"""choosenim show | grep "*"|tr -d " *"""").output
+  
+  var versions = gorgeEx(getVersions).output.splitLines()
+  echo &"Testing with nim versions : {versions}"
+  
+  var passedVersions = newSeq[string]()
+  var testAll = false
+  var result: tuple[output:string, exitCode:int]
+  for ver in versions: # oldest first
+    discard gorgeEx &"choosenim -y {ver}"
+    for task in ["test","testjs","docgen"]:
+      result = gorgeEx &"nimble {task}"
+      if result.exitCode != 0:
+        break
+    if result.exitCode == 0:
+      echo &"Checking compatibility with nim {ver}... PASSED"
+      passedVersions.add ver
+      if not testAll:
+        break
+    else:
+      echo &"Checking compatibility with nim {ver}... FAILED"
+  discard gorgeEx(&"choosenim {thisVersion}")
+  echo &"Passed versions: {passedVersions}"
     
 task build, "Build the library":
   echo "Building library..."
-  exec "nim c src/cueconfig.nim"
+  exec "nim c src/config.nim"
