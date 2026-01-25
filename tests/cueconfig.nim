@@ -1,14 +1,14 @@
 ## Copyright (c) 2025 Ben Tomlin
 ## Licensed under the MIT license
 ## Test data `tests/config.cue`_
-import std/[unittest, json, paths, strutils, envVars, macros, times, strformat]
+import std/[unittest, json, paths, strutils, envVars, macros]
 when not defined(js):
-  import std/[files, osproc, dirs,os]
+  import std/[files, osproc, dirs, os, times]
 
-import cueconfig/[cueconfig, util, jsonextra]
+import cueconfig/[cueconfig, util]
 
-when nimvm:
-  from system/nimscript import cd
+# when nimvm:
+#   from system/nimscript import cd
 abortOnError = true
 
 const ENV =
@@ -36,6 +36,7 @@ proc wipePath() =
   if len(GPATH) == 0:
     GPATH = getEnv("PATH")
   putEnv("PATH", "")
+
 proc restorePath() =
   putEnv("PATH", GPATH)
 
@@ -43,11 +44,11 @@ when defined(js):
   const BROWSER = isBrowser()
   const NODE = isNode()
 else:
-  const BROWSER =  false
-  const NODE =  false
-  
-when(NODE or defined(c)):
-  suite "Env registrations": # +nodejs
+  const BROWSER = false
+  const NODE = false
+
+when (NODE or defined(c)):
+  suite "Env registrations":
     setup:
       injectEnv(ENV)
       registerEnvPrefix("NIM_", caseInsensitive = false)
@@ -69,36 +70,33 @@ when(NODE or defined(c)):
       registerEnvPrefix("OBJ_")
       check getConfig[int]("COMMON.Z") == 100
 
-when(not defined(js)):
+when (not defined(js)):
   suite "File registrations":
     setup:
       clearConfigAndRegistrations()
       setCurrentDir(ppath / "assets")
     suite "Relative paths":
       test "Relative fskPath":
-        
         registerConfigFileSelector("fallback.json")
         check getConfig[string]("fileExtUsed") == "json"
         var c1, c2: int
         c1 = checksumConfig()
         registerConfigFileSelector("subdir.json") # no subdir.json in assets
         check c1 == checksumConfig() # no change as no subdir.json exists
-  
+
         setCurrentDir(ppath / "assets/subdir")
         # we signal the contextdir changed
         reload()
-        # now the context dir contains subdir.json but not fallback.json 
+        # now the context dir contains subdir.json but not fallback.json
         check getConfig[string]("subdirjson") == "here"
         expect(Exception):
           check getConfig[string]("fileExtUsed") == "json"
-          
-  
+
       test "Relative fskPeg":
         # going to recurse and find, anchored at assetss
         registerConfigFileSelector(("", r"subdir\.json$"))
         check getConfig[string]("subdirjson") == "here"
         setCurrentDir(ppath / "../src")
-        echo "here"
         reload()
         expect( # reload now will not find anything
           ValueError
@@ -110,34 +108,34 @@ when(not defined(js)):
         setCurrentDir(ppath / "assets/subdir")
         registerConfigFileSelector("{getContextDir()}/subdir.json")
         check getConfig[string]("subdirjson") == "here"
-  
+
         setCurrentDir(ppath / "assets")
         reload()
         expect(ValueError):
           # now the interpolated path won't be correck
           check getConfig[string]("subdirjson") == "here"
-  
+
       test "fskPath {ENV}":
         putEnv("STUB", "subdir")
         setCurrentDir(ppath / "assets/subdir")
         registerConfigFileSelector("{STUB}.json")
         check getConfig[string]("subdirjson") == "here"
-  
+
       test "fskPeg {getContextDir()}":
         setCurrentDir(ppath / "assets/subdir")
         registerConfigFileSelector(("{getContextDir()}", r"subdir.json$"))
         check getConfig[string]("subdirjson") == "here"
-  
+
         setCurrentDir(ppath / "assets")
         reload() # still okay as the patern will recurse
         check getConfig[string]("subdirjson") == "here"
-  
+
         setCurrentDir(ppath / "../src")
         reload()
         expect(ValueError):
           # now the interpolated path won't be correct
           check getConfig[string]("subdirjson") == "here"
-  
+
       test "fskPeg {ENV}":
         putEnv("S1", "assets")
         putEnv("S2", "subdir")
@@ -146,14 +144,14 @@ when(not defined(js)):
         # relative if it is not absolute
         registerConfigFileSelector(("{S1}/{S2}", r"subdir.json$"))
         check getConfig[string]("subdirjson") == "here"
-  
+
         putEnv("S1", "../src")
         check getConfig[string]("subdirjson") == "here" # havent reloaded yet
         reload() # now the config will have new env
         expect(ValueError):
           # now the interpolated path won't be correct
           check getConfig[string]("subdirjson") == "here"
-  
+
   suite "Fallback and precedence":
     setup:
       clearConfigAndRegistrations()
@@ -268,13 +266,16 @@ suite "Read static configuration (at compiletime)":
   setup:
     # This is static it probably applies over everything
     static:
+      # in the js backend case, we cant change the context dir, even at compiletime
       clearConfigAndRegistrations()
-      cd($ppath)
-      registerConfigFileSelector(ppath / "assets/config.cue")
-      putEnv("SOPS_AGE_KEY_FILE", $ppath / "age.keypair")
-      var theSecret = "c4ViBOUl/JzUE97sWaFZs6pcIAEgaJ02OAWOHOxfjMM="
+      #os.setCurrentDir $ppath
+      #cd($ppath)
+      registerConfigFileSelector("assets/config.cue")
+      putEnv("SOPS_AGE_KEY_FILE", string(ppath / "age.keypair"))
+      
   test "Compiletime registrations":
-    const ctregs = showRegistrations() # registrations at compiletime, what commit() wouldput to binary
+    const ctregs = showRegistrations()
+      # registrations at compiletime, what commit() wouldput to binary
     check ctregs.contains("assets/config.cue") # @ compiletime
     check not showRegistrations().contains("assets/config.cue") # @ runtime
   # test "Second commit":
@@ -285,7 +286,7 @@ suite "Read static configuration (at compiletime)":
     # const evaluated at conpiletime, so we are testing compile time access
     const cfgNode = getConfig[string]("compiled.testString")
     check cfgNode == "hello world"
-    
+
   test "Compiletime config not persisted without commit":
     expect(ValueError):
       # trigger an init of singleton
@@ -305,7 +306,7 @@ suite "Read static configuration (at compiletime)":
   #   # in nimble task
   #   # OK
   #   commitCompiletimeConfig()
- 
+
 # NODE, BROWSER, C
 suite "Read static configuration (at runtime)":
   test "Read compiled":
@@ -333,16 +334,16 @@ suite "JSON value type conversion":
     check getConfig[bool](@["app", "nested", "flag"])
   test "Read object":
     check getConfigNode("app.nested").kind == JObject
-    
+
 suite "API":
   test "Dot notation key":
     check getConfig[bool]("app.nested.flag") == true
   test "Array of strings key":
-    check getConfig[bool](["app","nested","flag"]) == true
+    check getConfig[bool](["app", "nested", "flag"]) == true
   test "Seq key":
-    check getConfig[bool](@["app","nested","flag"]) == true
+    check getConfig[bool](@["app", "nested", "flag"]) == true
   test "Varargs key":
-    check getConfig[bool]("app","nested","flag") == true
+    check getConfig[bool]("app", "nested", "flag") == true
 
 when not defined(js): # filesystem access required
   suite "Read runtime configuration":
@@ -357,8 +358,7 @@ when not defined(js): # filesystem access required
       NIM_COMMON_Z=100
       """
       setCurrentDir(ppath / "assets")
-      #echo showConfig() # only contains config.cue currently
-      registerEnvPrefix("nim_",caseInsensitive=true)
+      registerEnvPrefix("nim_", caseInsensitive = true)
       registerConfigFileSelector("bincfg.cue")
       registerConfigFileSelector("pwdcfg.cue")
       injectEnv(env)
@@ -382,10 +382,11 @@ when not defined(js): # filesystem access required
       registerConfigFileSelector("only.json", true)
       check getConfig[string]("test") == "onlyjson"
 
-when(not defined(js) or NODE):
+when (not defined(js) or NODE):
   suite "Env parsing":
     setup:
-      const env = """
+      const env =
+        """
       nim_env_sTr=stringValue
       nim_env_inT=12345
       nim_env_fLoat=3.14159
@@ -397,17 +398,21 @@ when(not defined(js) or NODE):
       nim_={"env": {"obj": {"old": 0}}, "topLevelKey": "topLevelValue"}
       """
       injectEnv(env)
+      when defined(js):
+        registerEnvPrefix("nim_", caseInsensitive = true)
       reload()
-    test "Case sensitivity":
+    test "Case sensitivity of json keys":
       check getConfig[string]("env.sTr") == "stringValue"
       check getConfig[int]("env.inT") == 12345
-      expect ValueError: discard getConfig[string]("env.str")
+      expect ValueError:
+        discard getConfig[string]("env.str")
     test "Arrays":
-      check getConfig[seq[string]]("env.array0") == @["one","two","three"]
-      check getConfig[seq[int]]("env.array1") == @[1,2,3]
-      check getConfig[seq[float]]("env.array2") == @[1.1,1.0]
-      # This will fail as mixed types not supported in nim, the JsonNode does
-      # check getConfig[seq[int]]("env.array3") == @[1,1]
+      check getConfig[seq[string]]("env.array0") == @["one", "two", "three"]
+      check getConfig[seq[int]]("env.array1") == @[1, 2, 3]
+      check getConfig[seq[float]]("env.array2") ==
+        @[1.1, 1.0]
+          # This will fail as mixed types not supported in nim, the JsonNode does
+          # check getConfig[seq[int]]("env.array3") == @[1,1]
     test "Object":
       let objNode = getConfigNode("env.obj")
       check objNode["key1"].getStr() == "value1"
