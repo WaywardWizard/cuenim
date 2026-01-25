@@ -1,19 +1,17 @@
+## Copyright (c) 2025 Ben Tomlin
+## Licensed under the MIT license
 ## Note javascript backend will have no file access
 import std/[paths, macros, strformat]
+
 when not defined(js):
   import std/[os]
 when nimvm:
   import std/[staticos]
-
-type CodepathDefect* = object of Defect
-
-proc `/`*(a: Path, b: string): Path =
-  result = a
-  result.add(b.Path)
-
-proc `/`*(a: string, b: Path): Path =
-  result = a.Path
-  result.add(b)
+  
+import vmutil
+export vmutil
+import pathutil
+export pathutil
 
 macro getField*(obj: typed, field: string, T: typedesc): untyped =
   ## Get field of object dynamically, where field value is of type T
@@ -43,41 +41,6 @@ macro getField*(obj: typed, field: string, T: typedesc): untyped =
       )
   ifexpr.add(nnkElseExpr.newTree(newStmtList(throw)))
   result = ifexpr
-
-# these procs need to be available to the nimvm regardless of backend
-# not supported by js backend
-# supported by c
-template defineFsUtils(): untyped =
-  proc getCurrentDir*(): string = 
-    ## Working directory at runtime, project directory at compiletime.
-    when nimvm:
-      result = gorgeEx("pwd").output
-    else:
-      when not defined(js):
-        result = os.getCurrentDir()
-      else:
-        raise CodepathDefect.newException("Not available for JS backend")
-
-  proc getContextDir*(): string =
-    when nimvm:
-      getProjectPath()
-    else:
-      when not defined(js): getCurrentDir()
-      else: raise CodepathDefect.newException("Not available for JS backend")
-    
-  proc extant*(p: Path): bool =
-    ## Compiletime or runtime existence of path relative to the context directory
-    var path = p
-    if not p.isAbsolute():
-      path = getContextDir() / p
-    when nimvm:
-      staticos.staticFileExists($path)
-    else:
-      when not defined(js):
-        fileExists($path)
-      else:
-        raise CodepathDefect.newException("Not available for JS backend")
-defineFsUtils()
 
 template dualVar*(name: untyped, Type: typedesc) =
   ## A variable that exists at runtime and compiletime, along with a getter and
@@ -113,7 +76,7 @@ template dualVar*(name: untyped, Type: typedesc) =
       name = value
 
   template `dualInit name`(value: untyped): untyped =
-    ## Init variable in both rt & ct context
+    ## Init or set variable in both rt & ct context
     static:
       `dualSet name` value
     `dualSet name` value
