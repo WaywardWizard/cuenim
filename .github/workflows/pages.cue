@@ -16,9 +16,9 @@ workflows: {
 			"cancel-in-progress": false
 		}
 		permissions: {
-			// contents: "write"
+			contents: "write"
 			pages: "write"
-			// id_token: "write"
+			"id-token": "write"
 		}
 
 		// Environment variables for the workflow
