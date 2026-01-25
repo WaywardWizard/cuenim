@@ -189,7 +189,7 @@ Config sources registered at compiletime may have their contents comitted to the
 [commit]. SOPs sources cannot be comitted to a binary for security reasons.
 
 # API 
-A simplified api of [module src/api] is provided for end users.
+A simplified api of [module api] is provided for end users.
 
 ## Summary
 | Call | CT|RT | Usage |

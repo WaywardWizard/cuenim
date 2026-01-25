@@ -83,7 +83,7 @@ putEnv("NIM_server_data","{\"key1\":\"value1\",\"key2\":2}") # nested merge
 ````
 
 # Documentation
-
+[Github Pages](https://waywardwizard.github.io/cueconfig/)
 
 # Why
 The benefits of CUE and SOPS are best heard from the horses mouth. For CUE, config can be typed and validated, it can be generated from other config, and boilerplate and repitition can be eliminated. Particularly you can change a value, and have other values change accordingly, because you can derive your configuration from principal configuration with logic.

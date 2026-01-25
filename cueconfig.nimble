@@ -80,7 +80,9 @@ task docgen, "Generate documentation":
     echo result.output
     checkresult()
     
-  result = gorgeEx &"ln -sr {DOCFOLDER}/{{the,}}index.html"
+  result = gorgeEx &"mv {DOCFOLDER}/{{the,}}index.html"
+  checkResult()
+  result = gorgeEx &"ln -sr {DOCFOLDER}/{{,the}}index.html"
   checkResult()
     
 task build, "Build the library":
