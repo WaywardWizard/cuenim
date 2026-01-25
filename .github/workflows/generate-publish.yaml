@@ -19,13 +19,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-      - name: Enumerate dependencies
-        run: nimble --silent deps > deps.txt
       - name: Setup Nim
         uses: jiro4989/setup-nim-action@v2
         with:
           nim-version: "2.2"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Enumerate dependencies
+        run: nimble --silent deps > deps.txt
       - name: Cache Nimble packages
         uses: actions/cache@v5
         with:
