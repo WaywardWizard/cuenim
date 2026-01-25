@@ -6,7 +6,6 @@ name: Generate and Publish Documentation
   workflow_dispatch: {}
 env:
   FORCE_COLOR: "1"
-  NIMBLE_DIR: /root/.nimble
 concurrency:
   group: generate-publish
   cancel-in-progress: false

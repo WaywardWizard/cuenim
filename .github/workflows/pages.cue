@@ -24,7 +24,7 @@ workflows: {
 		// Environment variables for the workflow
 		env: {
 			FORCE_COLOR: "1"
-			NIMBLE_DIR:  "/root/.nimble"
+			//NIMBLE_DIR:  "/root/.nimble"
 		}
 
 		// Single job that generates docs and prepares for Pages
