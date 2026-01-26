@@ -145,12 +145,12 @@ proc initJsonSource*(path: Path, useJsonFallback = false): JsonSource =
   ## 
   ## Also load the file content into memory in json format
   ##
-  ## `.*\.sops\.(yaml|json)` => jsSops
+  ## `.*\.sops\.(ya?ml|json)` => jsSops
   ## `.*\.cue`               => jsCue
   ## `.*\.json`              => jsJson
   let pathSplit = ($path).split(".")
   var discriminant: JsonSourceKind
-  if pathSplit.len >= 2 and pathSplit[^2].toLowerAscii() == "sops":
+  if pathSplit.len >= 2 and pathSplit[^2..^1].mapit(it.toLowerAscii()).contains("sops"):
     discriminant = jsSops
   else:
     case pathSplit[^1].toLowerAscii()

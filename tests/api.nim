@@ -4,7 +4,7 @@
 import std/[unittest, paths, envVars, macros,strutils]
 when not defined(js):
   import std/[os]
-import ../src/api
+import ../src/cueconfig
 
 when not defined(js):
   const ppath = getProjectPath().Path

@@ -637,3 +637,7 @@ proc showConfig*(): string = ## Show current configuration as string
   result &=
     showRegistrations() & "\n" & showComittedRegistrations() &
     $getConfigLazy(update = true)
+
+proc getConfigHash*(): string =
+  ## Get a hash of the current config state. Guaranteed to change of order or content changes
+  result = getConfigLazy(update = true).hash().intToStr()

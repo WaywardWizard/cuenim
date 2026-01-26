@@ -45,3 +45,6 @@ template inspect*(): string =
   ## Dump config with useful diagnostic information such as ct/rt registrations
   showConfig()
 
+template configHash*(): string =
+  ## Get a hash of the current config state
+  getConfigHash()
