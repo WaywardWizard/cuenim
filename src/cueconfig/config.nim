@@ -203,33 +203,41 @@ proc registerConfigFileSelector*(selector: FileSelector): void =
   # And remove it from the current configuration
   registerConfigFileSelectorImpl(selector)
 
-proc registerConfigFileSelector*(pselector: varargs[Path]): void =
-  ## Convenience fskPath registration automatically fallback to json
+proc registerConfigFileSelector*(pselector: varargs[Path], useJsonFallback=false, require = true): void =
+  ## Paths to files to use in config. If require then missing files raise. 
+  ## For cue files only, useJsonFallback will attempt to load a json file of 
+  ## the same name if missing or the cue binary is not available.
   for p in pselector:
-    registerConfigFileSelector(initFileSelector(p))
+    registerConfigFileSelector(initFileSelector(p, useJsonFallback,require))
 
-proc registerConfigFileSelector*(paths: varargs[string], useJsonFallback = true): void =
+proc registerConfigFileSelector*(paths: varargs[string], useJsonFallback=false,require = true): void =
   for p in paths:
-    registerConfigFileSelector(initFileSelector(Path(p), useJsonFallback))
+    registerConfigFileSelector(initFileSelector(Path(p), useJsonFallback,require))
 
 proc registerConfigFileSelector*(
     patternSelectors:
-      varargs[tuple[searchpath: string, peg: string, useJsonFallback = true]]
+      varargs[tuple[searchpath: string, peg: string, useJsonFallback=false,require = true]]
 ): void =
-  for (sp, rx, useJsonFallback) in patternSelectors:
-    registerConfigFileSelector(initFileSelector(Path(sp), rx, useJsonFallback))
+  for (sp, peg, useJsonFallback,require) in patternSelectors:
+    registerConfigFileSelector(initFileSelector(Path(sp), peg, useJsonFallback,require))
 
 proc registerConfigFileSelector*(
-    rxselectors: varargs[tuple[searchpath, peg: string]]
+    rxselectors: varargs[tuple[searchpath, peg: string]],
+    useJsonFallback=false, require = true,
 ): void =
   ## Convenience fskPeg registration automatically fallback to json
   for (searchpath, peg) in rxselectors:
-    registerConfigFileSelector(initFileSelector(Path(searchpath), peg, true))
+    registerConfigFileSelector(initFileSelector(Path(searchpath), peg, useJsonFallback,require))
 
 proc registerConfigFileSelector*(
-    search: Path, peg: string, useJsonFallback: bool
+    search: string, peg: string, useJsonFallback=false,require=true
 ): void =
-  registerConfigFileSelector(initFileSelector(search, peg, useJsonFallback))
+  registerConfigFileSelector(initFileSelector(search.Path, peg, useJsonFallback,require))
+  
+proc registerConfigFileSelector*(
+    search: Path, peg: string, useJsonFallback=false,require=true
+): void =
+  registerConfigFileSelector(initFileSelector(search, peg, useJsonFallback,require))
 
 proc deregisterConfigFileSelector*(selector: FileSelector): void =
   ## Deregister a previously registered config file selector so it is not loaded
@@ -412,9 +420,14 @@ proc getConfigLazy(update: bool): var Config =
 proc loadRegisteredConfigFiles(): void =
   ## Load all registered config files into config. Old configs removed
   ##
-  ## Json fallback is applied for missing cue files or cue binary. Where Json and
-  ## cue files of the same name are found, the json source will be ignored unless
-  ## the cue failed to load. Source deduplication will be performed.
+  ## When processing registrations, if a registration without any matched files 
+  ## is found an exception will be raised for the user to handle. Except for when
+  ## a selector that includes a cue file with json fallback is enabled. Fallback
+  ## is applied for missing cue files or cue binary but not for invalid cue files.
+  ## 
+  ## Where Json and cue files of the same name are found, the json source will 
+  ## be ignored unless the cue failed to load. Never will both json and cue be
+  ## loaded of the same path. Source deduplication will be performed. 
   ##
   ## Fallback:
   ## Where cue files or binary are not available a json file matching the
@@ -438,7 +451,6 @@ proc loadRegisteredConfigFiles(): void =
   ##
   ## If called at compiletime only use the content of envRegistry, not what may
   ## have been comitted by `commitCompiletimeConfig`_
-  ##
   var cueFiles, jsonFiles, sopsFiles = OrderedTableRef[Hash, JsonSource].new()
   var registry: ConfigRegistry = dualGetConfigRegistry() # seq[FileSelector]
   for s in registry: # FileSelector
@@ -456,8 +468,8 @@ proc loadRegisteredConfigFiles(): void =
         jsonFiles[jsrc.hash] = jsrc
       else:
         assert false, "Unexpected JsonSource discriminator"
-    if selectorEmpty: # alert user to misconfigured selector
-      raise ConfigError.newException(&"Config file selector matched no files: {s}")
+    if selectorEmpty and s.require:
+      raise ConfigError.newException(&"Config file selector matched no files: {s}\nContext dir: {getContextDir()}")
 
   # ignore json files where cue of same name exists (one source of truth)
   var cueItems, jsonItems: HashSet[tuple[path: Path, key: Hash]]

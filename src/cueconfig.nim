@@ -17,8 +17,11 @@ template deregister*(path: string) =
   ## Remove a registered config file at path
   deregisterConfigFileSelector(path)
 
-template register*(searchdir: string, peg: string, fallback: bool = true) =
-  ## Register config files in searchdir matching peg, with JSON fallback for cue
+template register*(searchdir: string, peg: string, fallback: bool = false, require=true) =
+  ## Register config files in searchdir matching peg
+  ## 
+  ## When *fallback*, json files will stand in for missing cue
+  ## When *require*, at least one file must match the registration
   registerConfigFileSelector((searchdir, peg, fallback))
 
 template deregister*(searchpath: string, peg: string) =

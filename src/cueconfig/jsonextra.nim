@@ -27,6 +27,7 @@ type
       peg: Peg
         ## matcher of *relative* paths in searchspace \
         ## The path string will be `searchspace / subpath`
+    require*: bool = false ## exception if no matching files found
     useJsonFallback*: bool = true
       ## for cue files only, if not loadable, try json of same name
 
@@ -54,7 +55,7 @@ proc `$`*(s:SerializedJsonSource): string =
   &"SerializedJsonSource(kind={s.kind},path={s.path},prefix={s.prefix},caseInsensitive={s.caseInsensitive})"
   
 proc initFileSelector*(
-    searchspace: Path, peg: string, useJsonFallback = true
+    searchspace: Path, peg: string, useJsonFallback=false, require = true
 ): FileSelector =
   ## Initialize a FileSelector from a searchspace path and peg 
   if ($peg).len == 0: raise ValueError.newException("Peg cannot be empty")
@@ -63,11 +64,13 @@ proc initFileSelector*(
     searchspace: searchspace,
     peg: peg(peg),
     useJsonFallback: useJsonFallback,
+    require: require,
   )
 
-proc initFileSelector*(path: Path, useJsonFallback = true): FileSelector =
+proc initFileSelector*(path: Path, useJsonFallback=false; require = true): FileSelector =
   ## Initialize a FileSelector from a file path
-  FileSelector(discriminator: fskPath, path: path, useJsonFallback: useJsonFallback)
+  FileSelector(discriminator: fskPath, path: path,
+    useJsonFallback: useJsonFallback,require: require)
 
 proc match*(x:FileSelector, path:string): bool = 
   x.discriminator == fskPath and $x.path == path
@@ -77,6 +80,7 @@ proc match*(x:FileSelector, path:string, peg: string): bool =
 proc hash*(x: FileSelector): Hash =
   ## Hash a FileSelector for caching, equivalence checking
   ## May fail if `initFileSelector`_ was not called for construction
+  ## Boolean attributes not included in hash as they are settings not identity
   doAssert x.discriminator == fskPath or $x.peg != "",
     "Improperly constructed FileSelector"
   var h: Hash

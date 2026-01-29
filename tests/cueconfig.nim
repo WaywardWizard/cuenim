@@ -77,26 +77,28 @@ when (not defined(js)):
       setCurrentDir(ppath / "assets")
     suite "Relative paths":
       test "Relative fskPath":
-        registerConfigFileSelector("fallback.json")
+        registerConfigFileSelector("fallback.json",require=false)
         check getConfig[string]("fileExtUsed") == "json"
         var c1, c2: int
         c1 = checksumConfig()
-        registerConfigFileSelector("subdir.json") # no subdir.json in assets
+        # Now, make request for a rel file that does not exist in current dir
+        registerConfigFileSelector("subdir.json",require=false) # no subdir.json in assets
         check c1 == checksumConfig() # no change as no subdir.json exists
 
         setCurrentDir(ppath / "assets/subdir")
         # we signal the contextdir changed
         reload()
         # now the context dir contains subdir.json but not fallback.json
-        check getConfig[string]("subdirjson") == "here"
+        check getConfig[string]("subdirjson") == "here" # no reload not stale
         expect(ConfigError):
           check getConfig[string]("fileExtUsed") == "json"
 
       test "Relative fskPeg":
         # going to recurse and find, anchored at assetss
-        registerConfigFileSelector(("", r"subdir\.json$"))
+        registerConfigFileSelector("", r"subdir\.json$",require=false)
         check getConfig[string]("subdirjson") == "here"
         setCurrentDir(ppath / "../src")
+        # dont require, as we expect this to not be found at next load
         reload()
         expect( # reload now will not find anything
           ConfigError
@@ -108,8 +110,8 @@ when (not defined(js)):
         setCurrentDir(ppath / "assets/subdir")
         registerConfigFileSelector("{getContextDir()}/subdir.json")
         check getConfig[string]("subdirjson") == "here"
-
         setCurrentDir(ppath / "assets")
+        registerConfigFileSelector("{getContextDir()}/subdir.json",require=false)
         reload()
         expect(ConfigError):
           # now the interpolated path won't be correck
@@ -131,6 +133,7 @@ when (not defined(js)):
         check getConfig[string]("subdirjson") == "here"
 
         setCurrentDir(ppath / "../src")
+        registerConfigFileSelector(("{getContextDir()}", r"subdir.json$"),require=false)
         reload()
         expect(ConfigError):
           # now the interpolated path won't be correct
@@ -146,8 +149,13 @@ when (not defined(js)):
         check getConfig[string]("subdirjson") == "here"
 
         putEnv("S1", "../src")
+        # wont know its env vars changed until a reload/refresh
         check getConfig[string]("subdirjson") == "here" # havent reloaded yet
-        reload() # now the config will have new env
+        
+        # on reload, the file will be missing now as S1 changed the searchpath
+        registerConfigFileSelector(("{S1}/{S2}", r"subdir.json$"),require=false)
+        
+        reload() # now the config will have new env, an no config file to be found
         expect(ConfigError):
           # now the interpolated path won't be correct
           check getConfig[string]("subdirjson") == "here"
@@ -166,11 +174,11 @@ when (not defined(js)):
       check getConfig[string]("fileExtUsed") == "cue"
     test "Path with fallback":
       wipePath() # make cue binary unavailable forcing fallback
-      registerConfigFileSelector("assets/fallback.cue", true)
+      registerConfigFileSelector("assets/fallback.cue", useJsonFallback = true)
       check getConfig[string]("fileExtUsed") == "json"
       restorePath()
     test "PEG no fallback":
-      registerConfigFileSelector(ppath, r"assets\/fall\w+\.cue$", false)
+      registerConfigFileSelector(ppath, r"assets\/fall\w+\.cue$", useJsonFallback=false)
       wipePath()
       expect(Exception):
         check getConfig[string]("fileExtUsed") == "json"
