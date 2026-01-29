@@ -154,6 +154,13 @@ proc registerConfigFileSelectorImpl(selectors: varargs[FileSelector]): void =
     known.incl(hash(i))
   for selector in selectors:
     if known.contains(hash(selector)):
+      # Update boolean attributes require and useJsonFallback
+      for i in 0 ..< dualGetConfigRegistry().len:
+        if hash(dualGetConfigRegistry()[i]) == hash(selector):
+          dualMGetConfigRegistry()[i].require = selector.require
+          dualMGetConfigRegistry()[i].useJsonFallback = selector.useJsonFallback
+          dualMGetConfigInstance().stale = true
+          break # only one match possible
       continue
     dualMGetConfigInstance().stale = true
     dualMGetConfigRegistry().add(selector)

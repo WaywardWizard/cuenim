@@ -410,6 +410,10 @@ proc load(x: JsonSource): tuple[jsonStr: string, json: JsonNode] {.raises: OSErr
       when not defined(js): # dirty hack
         cmd = execCmdEx(&"cue export {absPath}")
     if cmd.exitCode != 0:
+      raise
+        raise newException(ConfigError, &"File missing")
+      if cmd.output.contains("cue: command not found"):
+        raise newException(OSError, "Cue binary not found")
       raise newException(IOError, &"Cue export error for file {absPath};\n{cmd.output}")
     jsonStr = cmd.output
   of jsSops:
