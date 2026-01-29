@@ -1,13 +1,13 @@
-## Copyright (c) 2025 Ben Tomlin 
+## Copyright (c) 2025 Ben Tomlin
 ## Licensed under the MIT license
-##  
+##
 ## .. importdoc:: cueconfig/config,cueconfig/jsonextra
-## 
-## This api is simplified for end users and wraps an alternative API with more 
+##
+## This api is simplified for end users and wraps an alternative API with more
 ## descriptive names and convenience overloads in `cueconfig/config module`_
 import std/[paths, pegs]
 import cueconfig/config
-export getConfig, reload
+export getConfig, reload, showConfig
 
 template register*(path: string, fallback: bool = true) =
   ## Register a config file at path, with JSON fallback for unavailable cue files

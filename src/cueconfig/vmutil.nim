@@ -9,7 +9,7 @@
 ## the target backend. Therefore, procs not supporting backends such as js will
 ## need to be compiled for the js backend but will raise a CodepathDefect
 import std/[paths,sequtils,sugar,times,strutils]
-import pathutil
+import pathutil,exceptions
 when nimvm:
   import std/[staticos,macros]
 else:
@@ -29,7 +29,6 @@ proc isAbsolute*(p: Path): bool =
         
 type 
   StaticPath* = tuple[kind:PathComponent,path: string]
-  CodepathDefect* = object of Defect
 proc listFilesRec(path: Path|string, relative:bool = true, followLinks:bool = true): seq[StaticPath] =
   ## List all files in directory and children, no order
   ## 

@@ -5,7 +5,7 @@ import std/[unittest, json, paths, strutils, envVars, macros]
 when not defined(js):
   import std/[files, osproc, dirs, os, times]
 
-import cueconfig/[config, util]
+import cueconfig/[config, util,exceptions]
 
 # when nimvm:
 #   from system/nimscript import cd
@@ -62,7 +62,7 @@ when (NODE or defined(c)):
       check getConfig[int]("common.z") == 3
       check getConfig[string]("env.test") == "testing123"
     test "JSON key sensitivity":
-      expect(ValueError):
+      expect(ConfigError):
         discard getConfig[int]("cOMMON.Z")
     test "Precedence (later registrations precedent)":
       registerEnvPrefix("NiM_", caseInsensitive = true)
@@ -89,7 +89,7 @@ when (not defined(js)):
         reload()
         # now the context dir contains subdir.json but not fallback.json
         check getConfig[string]("subdirjson") == "here"
-        expect(Exception):
+        expect(ConfigError):
           check getConfig[string]("fileExtUsed") == "json"
 
       test "Relative fskPeg":
@@ -99,7 +99,7 @@ when (not defined(js)):
         setCurrentDir(ppath / "../src")
         reload()
         expect( # reload now will not find anything
-          ValueError
+          ConfigError
         ):
           check getConfig[string]("subdirjson") == "here"
 
@@ -111,7 +111,7 @@ when (not defined(js)):
 
         setCurrentDir(ppath / "assets")
         reload()
-        expect(ValueError):
+        expect(ConfigError):
           # now the interpolated path won't be correck
           check getConfig[string]("subdirjson") == "here"
 
@@ -132,7 +132,7 @@ when (not defined(js)):
 
         setCurrentDir(ppath / "../src")
         reload()
-        expect(ValueError):
+        expect(ConfigError):
           # now the interpolated path won't be correct
           check getConfig[string]("subdirjson") == "here"
 
@@ -148,7 +148,7 @@ when (not defined(js)):
         putEnv("S1", "../src")
         check getConfig[string]("subdirjson") == "here" # havent reloaded yet
         reload() # now the config will have new env
-        expect(ValueError):
+        expect(ConfigError):
           # now the interpolated path won't be correct
           check getConfig[string]("subdirjson") == "here"
 
@@ -190,7 +190,7 @@ when (not defined(js)):
       registerConfigFileSelector(ppath, r"regexmatch\.cue$", useJsonFallback = false)
       check getConfig[string]("regexmatch.common") == "subdir"
       clearConfigAndRegistrations()
-      expect(ValueError):
+      expect(ConfigError):
         discard getConfig[string]("regexmatch.common")
     test "Subdir precedent":
       registerConfigFileSelector(ppath, r"regexmatch\.cue$", useJsonFallback = false)
@@ -288,7 +288,7 @@ suite "Read static configuration (at compiletime)":
     check cfgNode == "hello world"
 
   test "Compiletime config not persisted without commit":
-    expect(ValueError):
+    expect(ConfigError):
       # trigger an init of singleton
       check getConfig[string]("compiled.testString") == "hello world"
   test "Compiletime commit":
@@ -404,7 +404,7 @@ when (not defined(js) or NODE):
     test "Case sensitivity of json keys":
       check getConfig[string]("env.sTr") == "stringValue"
       check getConfig[int]("env.inT") == 12345
-      expect ValueError:
+      expect ConfigError:
         discard getConfig[string]("env.str")
     test "Arrays":
       check getConfig[seq[string]]("env.array0") == @["one", "two", "three"]

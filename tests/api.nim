@@ -5,6 +5,7 @@ import std/[unittest, paths, envVars, macros,strutils]
 when not defined(js):
   import std/[os]
 import ../src/cueconfig
+import cueconfig/exceptions
 
 when not defined(js):
   const ppath = getProjectPath().Path
@@ -23,7 +24,7 @@ when not defined(js):
     test "Deregister config file":
       register("fallback.json")
       deregister("fallback.json")
-      expect(ValueError):
+      expect(ConfigError): # missing key
         discard getconfig[string]("fileExtUsed")
   
   suite "Simple API - Environment registration":
@@ -38,7 +39,7 @@ when not defined(js):
     test "Deregister env prefix":
       registerEnv("NIM_", caseSensitive = true)
       deregisterEnv("NIM_")
-      expect(ValueError):
+      expect(ConfigError):
         discard getconfig[string]("test")
   
   suite "Simple API - Config access":
@@ -75,5 +76,5 @@ when not defined(js):
       check getconfig[string]("fileExtUsed") == "json"
       setCurrentDir sdir
       reload()
-      expect(ValueError):
+      expect(ConfigError):
         check getconfig[string]("fileExtUsed") == "json"

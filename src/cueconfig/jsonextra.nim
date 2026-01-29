@@ -11,7 +11,7 @@ import
 when not defined(js):
   import std/[os, osproc,syncio]
   
-import util
+import util, exceptions
 
 type
   FileSelectorKind* = enum
@@ -123,7 +123,7 @@ proc interpolate(s: FileSelector): FileSelector =
   while contains(pathStr, matcher, matches):
     let envval = envvars.getEnv(matches[0])
     if envval == "":
-      raise ValueError.newException(&"Interplation env var {matches[0]} is empty")
+      raise ConfigError.newException(&"Interplation env var {matches[0]} is empty")
     pathStr = pathStr.replace("{" & matches[0] & "}", envval)
 
   # update path
@@ -159,13 +159,13 @@ proc initJsonSource*(path: Path, useJsonFallback = false): JsonSource =
     of "json":
       discriminant = jsJson
     else:
-      raise newException(ValueError, "Unsupported file extension: " & pathSplit[^1])
+      raise newException(ConfigError, "Unsupported file extension: " & pathSplit[^1])
 
   var extant: bool = extant(path)
   case discriminant # check path exists, fallback path if required
   of jsSops, jsJson:
     if not extant:
-      raise ValueError.newException("File does not exist: " & $path)
+      raise ConfigError.newException("File does not exist: " & $path)
     result.path = path
     result.discriminator = discriminant
   of jsCue:
@@ -177,14 +177,14 @@ proc initJsonSource*(path: Path, useJsonFallback = false): JsonSource =
         usePath = path.changeFileExt("json")
         extant = extant(usePath)
       if not extant:
-        raise ValueError.newException(
+        raise ConfigError.newException(
           "Cue file not available, no fallback json found: " & $path
         )
       result.path = usePath
     else:
       result.path = path
     if not extant:
-      raise ValueError.newException("File does not exist: " & $path)
+      raise ConfigError.newException("File does not exist: " & $path)
     result.discriminator = discriminant
 
   # never reached
@@ -212,21 +212,21 @@ proc depth(x:JsonSource): int =
   of jsJson, jsCue, jsSops:
     result = split($x.path.parentDir, '/').len
   of jsEnv:
-    raise ValueError.newException("No depth for env JsonSources")
+    raise CodepathDefect.newException("No depth for env JsonSources")
 proc mtime(x:JsonSource): Time =
   ## Last modification time of JsonSource, supported at compiletime
   case x.discriminator
   of jsJson, jsCue, jsSops:
     result = util.getLastModificationTime($x.path) # os @run, util @compile
   of jsEnv:
-    raise ValueError.newException("No mtime for env JsonSources")
+    raise CodepathDefect.newException("No mtime for env JsonSources")
     
 type SortKey = tuple[path: string, depth: int, mtime: Time]
 proc sortKey(x: JsonSource): SortKey =
   ## Sort key for JsonSource
   case x.discriminator
   of jsJson, jsCue, jsSops: result = ( $x.path, x.depth(), x.mtime() )
-  of jsEnv: raise ValueError.newException("No sortKey for env JsonSources")
+  of jsEnv: raise CodepathDefect.newException("No sortKey for env JsonSources")
     
 proc cmp(a,b:SortKey): int =
   ## Comparator producing least to most precedent order
@@ -243,9 +243,9 @@ proc cmpFiles*(a, b: tuple[key:Hash,val:JsonSource]): int =
   ## - Newer modification time
   ## - Lexical sort
   if a.val.discriminator != b.val.discriminator:
-    raise ValueError.newException("JsonSource kinds do not match for comparison")
+    raise CodepathDefect.newException("JsonSource kinds do not match for comparison")
   if a.val.discriminator in [jsEnv]:
-    raise ValueError.newException("No sorting for env JsonSources")
+    raise CodepathDefect.newException("No sorting for env JsonSources")
   cmp(a.val.sortKey(), b.val.sortKey())
   
 iterator items*(s: FileSelector, reverse = false): Path =
@@ -382,7 +382,7 @@ proc load(x: JsonSource): tuple[jsonStr: string, json: JsonNode] {.raises: OSErr
   else:
     when defined(js):
       if x.discriminator in [jsJson, jsCue, jsSops]:
-        raise ValueError.newException("File access not supported on JS backend")
+        raise ConfigError.newException("File access not supported on JS backend")
         
   # logic for nimvm/ non js backends follows
   var jsonStr: string
@@ -418,8 +418,11 @@ proc load(x: JsonSource): tuple[jsonStr: string, json: JsonNode] {.raises: OSErr
     when nimvm:
       cmd = gorgeEx(&"sops decrypt --output-type json {absPath}")
     else:
-      when not defined(js): # dirty hack
+      when not defined(js): # dirty hack to stop js backend runtime but allow nimvm
         cmd = execCmdEx(&"sops decrypt --output-type json {absPath}")
+        #echo &"SOPS {$cmd}"
+      else:
+        raise CodepathDefect.newException("File access not supported on JS backend")
     if cmd.exitCode != 0:
       raise
         newException(IOError, &"Sops decrypt error for file {absPath};\n{cmd.output}")
@@ -459,7 +462,7 @@ proc load(x: JsonSource): tuple[jsonStr: string, json: JsonNode] {.raises: OSErr
     try:
       json = parseJson(jsonStr)
     except JsonParsingError as e:
-      raise newException(ValueError, &"JSON parsing error for file {x.path};\n{e.msg}")
+      raise newException(ConfigError, &"JSON parsing error for file {x.path};\n{e.msg}")
 
   (jsonStr, json)
 

@@ -7,10 +7,10 @@ import
     times, json, paths, tables, strformat, macros, strutils, sequtils, sets, algorithm,
     hashes, sugar,
   ]
-import cueconfig/[jsonextra, util]
+import cueconfig/[jsonextra, util, exceptions]
 when not defined(js):
   import std/[os] # these wont compile with js backend or are unneeded
-  
+
 type
   Config = ref object
     ctCue = OrderedTableRef[Hash, JsonSource].new()
@@ -279,7 +279,7 @@ proc buildCompiletimeConfig(): SerializedConfig {.compiletime.} =
       of jsSops:
         # security safety, no compile in secrets
         raise newException(
-          ValueError,
+          ConfigError,
           &"DecryptedSOPS files should not be committed to compile time configuration for security reasons: {p}",
         )
   # load and serialize compiletime env vars
@@ -316,9 +316,8 @@ template commitCompiletimeConfig*(): untyped =
     # because calling at compiletime set the vmserializedConfig variable which
     # will not be accessible at runtime. We have to use a runtime variable as
     # our intermodule compiletime transport
-    raise newException(
-      ValueError,
-      "commitCompiletimeConfig may only be used in non-nimvm (runtime) context",
+    raise ConfigError.newException(
+      "commitCompiletimeConfig may only be used in non-nimvm (runtime) context"
     )
   const data: SerializedConfig = buildCompiletimeConfig()
     ## defined at \
@@ -384,7 +383,7 @@ proc loadCompiletimeComittedConfig() =
       let jsrc = s.deserialize
       if jsrc.discriminator == jsSops:
         raise newException(
-          ValueError,
+          ConfigError,
           &"SOPS files may not be committed to compile time configuration for security reasons: {$jsrc}",
         )
       addCtSourceToConfig(jsrc)
@@ -484,7 +483,7 @@ proc loadRegisteredEnvVars() =
   ## vars are preserved.
   ##
   ## At compiletime all previous compiletime env vars are replaced.
-  ## 
+  ##
   ## This behaviour ensures that when you reload, you get a snapshot of the
   ## selected env vars at the time and do not have stale values interfering.
   var updated = OrderedTableRef[Hash, JsonSource].new()
@@ -529,7 +528,7 @@ proc getConfigNodeImpl(key: openarray[string]): JsonNode =
     if jsrc.contains(key): # differentiates jsnode{key}=null vs no key
       return jsrc{key}
   let sources: string = dualMGetConfigInstance().sources().join("\n\t")
-  raise newException(ValueError, &"Key '{key}' not found in sources;\n\t{sources}")
+  raise ConfigError.newException(&"Key '{key}' not found in sources;\n\t{sources}")
 
 template getConfigNode*(key: string): lent JsonNode =
   getConfigNodeImpl(key.split('.'))
