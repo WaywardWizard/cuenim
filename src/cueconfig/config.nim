@@ -435,7 +435,10 @@ proc loadRegisteredConfigFiles(): void =
   var cueFiles, jsonFiles, sopsFiles = OrderedTableRef[Hash, JsonSource].new()
   var registry: ConfigRegistry = dualGetConfigRegistry() # seq[FileSelector]
   for s in registry: # FileSelector
+    # check for empty selectors
+    var selectorEmpty = true
     for p in s.interpolatedItems(reverse = true): # Path (extant ones)
+      selectorEmpty = false
       var jsrc = initJsonSource(p, s.useJsonFallback)
       case jsrc.discriminator
       of jsSops:
@@ -446,6 +449,8 @@ proc loadRegisteredConfigFiles(): void =
         jsonFiles[jsrc.hash] = jsrc
       else:
         assert false, "Unexpected JsonSource discriminator"
+    if selectorEmpty: # alert user to misconfigured selector
+      raise ConfigError.newException(&"Config file selector matched no files: {s}")
 
   # ignore json files where cue of same name exists (one source of truth)
   var cueItems, jsonItems: HashSet[tuple[path: Path, key: Hash]]
