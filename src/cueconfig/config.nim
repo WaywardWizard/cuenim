@@ -242,7 +242,11 @@ proc deregisterConfigFileSelector*(selector: FileSelector): void =
   ## Deregister a previously registered config file selector so it is not loaded
   # on `reload`_ calls. This will not remove its config content if it were
   # loaded. Call `loadRegisteredConfig`_ or `reload`_ to do that.
+  let lenBefore = dualGetConfigRegistry().len
   dualSetConfigRegistry dualGetConfigRegistry().filterIt(hash(it) != hash(selector))
+  let lenAfter = dualGetConfigRegistry().len
+  if lenBefore == lenAfter:
+    raise newException(ValueError, &"Selector {$selector} not found in registry;\n{$dualGetConfigRegistry()}")
   dualMGetConfigInstance().stale = true
 
 proc deregisterConfigFileSelector*(path: string) =
