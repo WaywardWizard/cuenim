@@ -472,7 +472,7 @@ proc loadRegisteredConfigFiles(): void =
       else:
         assert false, "Unexpected JsonSource discriminator"
     if selectorEmpty and s.require:
-      raise ConfigError.newException(&"Config file selector matched no files: {s}\nContext dir: {getContextDir()}")
+      raise ConfigError.newException(&"Config file selector target not readable or matched no files: {s}\nContext dir: {getContextDir()}")
 
   # ignore json files where cue of same name exists (one source of truth)
   var cueItems, jsonItems: HashSet[tuple[path: Path, key: Hash]]
