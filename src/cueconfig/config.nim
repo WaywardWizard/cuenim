@@ -203,40 +203,52 @@ proc registerConfigFileSelector*(selector: FileSelector): void =
   # And remove it from the current configuration
   registerConfigFileSelectorImpl(selector)
 
-proc registerConfigFileSelector*(pselector: varargs[Path], useJsonFallback=false, require = true): void =
-  ## Paths to files to use in config. If require then missing files raise. 
-  ## For cue files only, useJsonFallback will attempt to load a json file of 
+proc registerConfigFileSelector*(
+    pselector: varargs[Path], useJsonFallback = false, require = true
+): void =
+  ## Paths to files to use in config. If require then missing files raise.
+  ## For cue files only, useJsonFallback will attempt to load a json file of
   ## the same name if missing or the cue binary is not available.
   for p in pselector:
-    registerConfigFileSelector(initFileSelector(p, useJsonFallback,require))
-
-proc registerConfigFileSelector*(paths: varargs[string], useJsonFallback=false,require = true): void =
-  for p in paths:
-    registerConfigFileSelector(initFileSelector(Path(p), useJsonFallback,require))
+    registerConfigFileSelector(initFileSelector(p, useJsonFallback, require))
 
 proc registerConfigFileSelector*(
-    patternSelectors:
-      varargs[tuple[searchpath: string, peg: string, useJsonFallback=false,require = true]]
+    paths: varargs[string], useJsonFallback = false, require = true
 ): void =
-  for (sp, peg, useJsonFallback,require) in patternSelectors:
-    registerConfigFileSelector(initFileSelector(Path(sp), peg, useJsonFallback,require))
+  for p in paths:
+    registerConfigFileSelector(initFileSelector(Path(p), useJsonFallback, require))
+
+proc registerConfigFileSelector*(
+    patternSelectors: varargs[
+      tuple[searchpath: string, peg: string, useJsonFallback = false, require = true]
+    ]
+): void =
+  for (sp, peg, useJsonFallback, require) in patternSelectors:
+    registerConfigFileSelector(
+      initFileSelector(Path(sp), peg, useJsonFallback, require)
+    )
 
 proc registerConfigFileSelector*(
     rxselectors: varargs[tuple[searchpath, peg: string]],
-    useJsonFallback=false, require = true,
+    useJsonFallback = false,
+    require = true,
 ): void =
   for (searchpath, peg) in rxselectors:
-    registerConfigFileSelector(initFileSelector(Path(searchpath), peg, useJsonFallback,require))
+    registerConfigFileSelector(
+      initFileSelector(Path(searchpath), peg, useJsonFallback, require)
+    )
 
 proc registerConfigFileSelector*(
-    search: string, peg: string, useJsonFallback=false,require=true
+    search: string, peg: string, useJsonFallback = false, require = true
 ): void =
-  registerConfigFileSelector(initFileSelector(search.Path, peg, useJsonFallback,require))
-  
+  registerConfigFileSelector(
+    initFileSelector(search.Path, peg, useJsonFallback, require)
+  )
+
 proc registerConfigFileSelector*(
-    search: Path, peg: string, useJsonFallback=false,require=true
+    search: Path, peg: string, useJsonFallback = false, require = true
 ): void =
-  registerConfigFileSelector(initFileSelector(search, peg, useJsonFallback,require))
+  registerConfigFileSelector(initFileSelector(search, peg, useJsonFallback, require))
 
 proc deregisterConfigFileSelector*(selector: FileSelector): void =
   ## Deregister a previously registered config file selector so it is not loaded
@@ -246,7 +258,10 @@ proc deregisterConfigFileSelector*(selector: FileSelector): void =
   dualSetConfigRegistry dualGetConfigRegistry().filterIt(hash(it) != hash(selector))
   let lenAfter = dualGetConfigRegistry().len
   if lenBefore == lenAfter:
-    raise newException(ValueError, &"Selector {$selector} not found in registry;\n{$dualGetConfigRegistry()}")
+    raise newException(
+      ValueError,
+      &"Selector {$selector} not found in registry;\n{$dualGetConfigRegistry()}",
+    )
   dualMGetConfigInstance().stale = true
 
 proc deregisterConfigFileSelector*(path: string) =
@@ -423,14 +438,14 @@ proc getConfigLazy(update: bool): var Config =
 proc loadRegisteredConfigFiles(): void =
   ## Load all registered config files into config. Old configs removed
   ##
-  ## When processing registrations, if a registration without any matched files 
+  ## When processing registrations, if a registration without any matched files
   ## is found an exception will be raised for the user to handle. Except for when
   ## a selector that includes a cue file with json fallback is enabled. Fallback
   ## is applied for missing cue files or cue binary but not for invalid cue files.
-  ## 
-  ## Where Json and cue files of the same name are found, the json source will 
+  ##
+  ## Where Json and cue files of the same name are found, the json source will
   ## be ignored unless the cue failed to load. Never will both json and cue be
-  ## loaded of the same path. Source deduplication will be performed. 
+  ## loaded of the same path. Source deduplication will be performed.
   ##
   ## Fallback:
   ## Where cue files or binary are not available a json file matching the
@@ -472,7 +487,9 @@ proc loadRegisteredConfigFiles(): void =
       else:
         assert false, "Unexpected JsonSource discriminator"
     if selectorEmpty and s.require:
-      raise ConfigError.newException(&"Config file selector target not readable or matched no files: {s}\nContext dir: {getContextDir()}")
+      raise ConfigError.newException(
+        &"Config file selector target not readable or matched no files: {s}\nContext dir: {getContextDir()}"
+      )
 
   # ignore json files where cue of same name exists (one source of truth)
   var cueItems, jsonItems: HashSet[tuple[path: Path, key: Hash]]
@@ -554,20 +571,24 @@ proc getConfigNodeImpl(key: openarray[string]): JsonNode =
   var cfg: Config = getConfigLazy(update = true)
   # this is going to be modified, we dont want to modify originals
   var resultObject: JsonNode = %*{}
-  
+
   for label, jsrc in cfg.pairs(reverse = true):
     # high to low precedence
     if jsrc.contains(key): # differentiates jsnode{key}=null vs no key
-      if jsrc{key}.kind == JObject: # merge all config source contributions to single node
+      if jsrc{key}.kind == JObject:
+        # merge all config source contributions to single node
         for label2, jsrc2 in cfg.pairs(): # low to high
           if jsrc2.contains(key):
             var contribution: JsonNode = jsrc2{key}
-            assert(contribution.kind == JObject,&"Object and non object value for key {key} in config sources")
+            assert(
+              contribution.kind == JObject,
+              &"Object and non object value for key {key} in config sources",
+            )
             resultObject.mergeIn(contribution)
         return resultObject
       # if value is terminal (!=JObject), return it
       return jsrc{key}
-      
+
   # key not present in any source
   let sources: string = dualMGetConfigInstance().sources().join("\n\t")
   raise ConfigError.newException(&"Key '{key}' not found in sources;\n\t{sources}")
@@ -585,7 +606,7 @@ proc configHasKey*(key: string): bool =
   try:
     discard getConfigNode(key)
     return true
-  except ValueError:
+  except ConfigError:
     return false
 
 # Note large floats are parsed to strings (not floats) by std/json `parseJson`
